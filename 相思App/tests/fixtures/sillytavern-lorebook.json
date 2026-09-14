@@ -1,0 +1,34 @@
+{
+  "name": "兼容测试世界书",
+  "entries": {
+    "7": {
+      "uid": 7,
+      "key": ["相柳", "九命"],
+      "keysecondary": ["海底"],
+      "comment": "相柳身份",
+      "content": "相柳是九命海妖。",
+      "constant": false,
+      "vectorized": false,
+      "selective": true,
+      "selectiveLogic": 0,
+      "order": 80,
+      "position": 5,
+      "disable": false,
+      "probability": 75,
+      "useProbability": true,
+      "depth": 4,
+      "role": 0,
+      "group": "相柳身份",
+      "groupWeight": 120,
+      "scanDepth": 12,
+      "caseSensitive": null,
+      "matchWholeWords": null,
+      "preventRecursion": true,
+      "excludeRecursion": false,
+      "sticky": 2,
+      "cooldown": 1,
+      "delay": 0,
+      "futureCompatibilityField": "must-survive-round-trip"
+    }
+  }
+}

@@ -1,0 +1,531 @@
+<!-- ============================================================
+     ⚠️ 重要提醒（AI 每次修改本文件前必读）
+     ============================================================
+     本项目是【手机安卓 App】：通过 Capacitor 打包成 APK，实际运行在
+     Android WebView 里。网页版（127.0.0.1:5193）【仅用于查看 / 调试】，
+     不是实际使用环境。
+
+     每次改动请务必：
+     1. 优先保证【安卓 WebView】下的表现（桌面能跑 ≠ 安卓能跑）
+     3. 若安卓壳工程（android/ 目录）有对应的原生代码
+        （WebView 配置、权限、插件等），那边也要同步改。
+     详细说明见 app.js 与 styles.css 顶部的同类注释。
+     ============================================================ -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>相思</title>
+  <!-- 在首屏绘制前恢复输入栏颜色，避免主脚本加载前短暂闪出旧颜色。 -->
+  <script>
+    (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('xs_chat_appearance_v1') || 'null');
+        const color = saved && saved.inputBar;
+        const values = color && [color.r, color.g, color.b, color.a].map(Number);
+        if (!values || values.some((value) => !Number.isFinite(value))) return;
+
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        const r = Math.round(clamp(values[0], 0, 255));
+        const g = Math.round(clamp(values[1], 0, 255));
+        const b = Math.round(clamp(values[2], 0, 255));
+        const a = clamp(values[3], 0, 1);
+        document.documentElement.style.setProperty('--app-input-bar', `rgba(${r}, ${g}, ${b}, ${a})`);
+      } catch (_) {}
+    })();
+  </script>
+  <!-- Font Awesome Free 6.5.2 固定随 App 打包，离线打开也能显示图标。 -->
+  <link rel="stylesheet" href="./assets/vendor/fontawesome/css/fontawesome.min.css?v=97">
+  <link rel="stylesheet" href="./assets/vendor/fontawesome/css/solid.min.css?v=97">
+  <link rel="stylesheet" href="./styles.css?v=84">
+</head>
+<body>
+  <main class="phone-shell" id="phoneShell" aria-label="相思">
+
+    <!-- ===== 左栏：全部角色（抽屉） ===== -->
+    <aside class="role-column" id="roleColumn" aria-label="全部角色">
+      <div class="column-head">
+        <strong>角色</strong>
+        <label class="role-chat-search" aria-label="搜索聊天记录">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="roleChatSearch" type="search" placeholder="搜索聊天" autocomplete="off">
+        </label>
+        <button class="add-role-button" id="addRoleButton" type="button" aria-label="人物管理">+</button>
+      </div>
+      <div class="role-search-results" id="roleSearchResults" hidden></div>
+      <div class="role-list" id="roleList"></div>
+      <!-- 底部固定三个 tab -->
+      <nav class="side-tabs" aria-label="项目设置">
+        <button type="button" data-target="api">API链接</button>
+        <button type="button" data-target="voice">声音链接</button>
+        <button type="button" data-target="more">更多</button>
+      </nav>
+    </aside>
+
+    <!-- ===== 中栏：聊天 + 设置页 ===== -->
+    <section class="chat-screen" id="chatScreen">
+      <div class="background-layer" id="backgroundLayer"></div>
+      <div class="scroll-blur" aria-hidden="true"></div>
+      <div class="composer-color-buffer" aria-hidden="true"></div>
+
+      <header class="chat-header">
+        <button class="back-button" id="openRoles" type="button" aria-label="打开角色列表">‹</button>
+        <img class="avatar" id="headerAvatar" src="./assets/相柳_icon.png" alt="">
+        <div class="title-block">
+          <strong id="currentRoleName">相柳</strong>
+          <span>长相思</span>
+          <small id="heroLastReplyTime" class="last-reply-time"></small>
+        </div>
+        <button class="menu-button" id="openChatStore" type="button" aria-label="设置面板">•••</button>
+      </header>
+
+      <section class="messages" id="messages" aria-live="polite">
+        <article class="message bot" hidden aria-hidden="true" style="display:none!important">
+          <p></p>
+          <div class="message-actions">
+            <button type="button" class="choice">‹ 1/4 ›</button>
+            <button type="button" aria-label="重刷回复"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg></button>
+            <button type="button" aria-label="复制回复"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect></svg></button>
+            <button type="button" aria-label="点踩"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path></svg></button>
+            <button type="button" aria-label="播放声音"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg></button>
+            <button type="button" aria-label="分享"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg></button>
+          </div>
+        </article>
+
+        <div class="expired-line"><span>智能体已失效，无法继续对话</span></div>
+      </section>
+
+      <button class="jump-button" id="jumpButton" type="button" aria-label="回到底部">
+        <span class="jump-glyph" aria-hidden="true">v</span>
+      </button>
+
+      <form class="composer" id="composer">
+        <div class="input-capsule">
+          <textarea id="messageInput" rows="1" placeholder="有问题，尽管问"></textarea>
+          <button class="voice-icon-btn" id="voiceInputButton" type="button" aria-label="语音输入">
+            <!-- 空闲：声波 / 语音图标 -->
+            <svg class="icon-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="12" r="1.5" fill="currentColor" stroke="none"></circle>
+              <path d="M12.5 9.5c1.5 1.5 1.5 4.5 0 6"></path>
+              <path d="M15 7c2.5 2.5 2.5 7.5 0 10"></path>
+            </svg>
+            <!-- 输入文字后：发送图标（白色圆底 + 实心三角） -->
+            <svg class="icon-send" width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="20" cy="20" r="20" fill="white"/>
+              <path d="M13 27L20 12L27 27Z" fill="#5A3E2B"/>
+            </svg>
+          </button>
+        </div>
+      </form>
+
+      <div class="input-context-menu" id="inputContextMenu" role="menu" aria-hidden="true">
+        <button type="button" id="pasteInputText" role="menuitem">粘贴</button>
+        <button type="button" id="copyInputText" role="menuitem">复制</button>
+        <button type="button" id="insertInputLineBreak" role="menuitem">换行</button>
+        <button type="button" id="impersonateInputReply" role="menuitem">帮答</button>
+      </div>
+
+      <div class="sheet-scrim" id="sheetScrim"></div>
+
+      <!-- 角色编辑器（弹层） -->
+      <section class="character-editor" id="characterEditor" aria-label="人设设置" aria-hidden="true">
+        <header class="editor-header">
+          <button class="editor-back" id="closeEditor" type="button" aria-label="返回">‹</button>
+          <strong>人设设置</strong>
+          <button class="save-role-button" id="saveRoleButton" type="button">保存</button>
+        </header>
+        <div class="editor-body">
+          <section class="persona-versions" aria-label="人设版本">
+            <div class="persona-version-heading">
+              <strong>人设版本</strong>
+              <small class="persona-version-hint">长按人设名，可改名 / 复制 / 删除</small>
+              <button type="button" class="persona-add-button" id="personaMenuButton" aria-label="新增人设版本">+</button>
+            </div>
+            <div class="persona-version-list" id="personaVersionList"></div>
+          </section>
+          <button class="editor-avatar-button" id="editorAvatarButton" type="button" aria-label="编辑头像">
+            <img id="editorAvatar" src="./assets/相柳_icon.png" alt="">
+          </button>
+          <section class="role-image-picker" id="roleImagePicker" aria-label="人物头像和背景图" aria-hidden="true">
+            <div class="role-image-picker-grid">
+              <button class="role-image-choice" id="roleAvatarChoice" type="button" aria-label="上传人物头像">
+                <span class="role-image-preview is-avatar"><img id="roleAvatarPreview" src="./assets/相柳_icon.png" alt=""></span>
+                <strong>人物头像</strong><small>点击上传并框选</small>
+              </button>
+              <button class="role-image-choice" id="roleBackgroundChoice" type="button" aria-label="上传背景图">
+                <span class="role-image-preview is-background"><img id="roleBackgroundPreview" src="./assets/相柳.png" alt=""></span>
+                <strong>背景图</strong><small>点击上传并框选</small>
+              </button>
+            </div>
+            <div class="role-image-picker-actions">
+              <button id="cancelRoleImages" type="button">取消</button>
+              <button id="confirmRoleImages" type="button">确认</button>
+            </div>
+          </section>
+          <input class="file-input" id="avatarFileInput" type="file" accept="image/*">
+          <input class="file-input" id="backgroundFileInput" type="file" accept="image/*">
+          <input class="file-input" id="personaFileInput" type="file" accept=".json,.png,application/json,image/png">
+          <input class="file-input" id="multiPersonaFileInput" type="file" accept=".json,application/json">
+          <div class="role-name-row">
+            <label>名称<input id="roleNameInput" type="text" autocomplete="off"></label>
+            <label>作品 / 标签<input id="roleSubtitleInput" type="text" autocomplete="off"></label>
+          </div>
+          <section class="role-intro-section is-collapsed" id="roleIntroSection">
+            <div class="role-intro-heading">
+              <span>角色介绍（用于右上角角色页展示）</span>
+              <button class="role-intro-toggle" id="roleIntroToggle" type="button" aria-expanded="false" aria-controls="roleIntroInput" aria-label="展开角色介绍">▼</button>
+            </div>
+            <textarea id="roleIntroInput" rows="3" aria-label="角色介绍"></textarea>
+          </section>
+          <div class="role-voice-row">
+            <div class="role-voice-head">
+              <span class="role-voice-title">语音选择</span>
+              <label class="role-auto-read"><input id="roleAutoReadInput" type="checkbox"><span>AI 自动朗读</span></label>
+            </div>
+            <input id="roleVoiceInput" type="text" placeholder="留空则使用平台默认音色" autocomplete="off">
+          </div>
+          <label>角色描述<small id="roleDescTokenCount" class="token-count"></small><textarea id="rolePersonaInput" rows="6"></textarea></label>
+          <label>性格<textarea id="rolePersonalityInput" rows="4"></textarea></label>
+          <label>场景<textarea id="roleScenarioInput" rows="4"></textarea></label>
+          <label>开场白<textarea id="roleGreetingInput" rows="4"></textarea></label>
+          <label>示例对话<textarea id="roleExampleInput" rows="5"></textarea></label>
+          <label>备注<textarea id="roleNoteInput" rows="4"></textarea></label>
+        </div>
+        <section class="role-image-cropper" id="roleImageCropper" aria-label="框选图片显示区域" aria-hidden="true">
+          <header>
+            <button id="cancelImageCropTop" type="button" aria-label="取消框选">‹</button>
+            <strong id="imageCropTitle">框选人物头像</strong><span></span>
+          </header>
+          <div class="role-image-cropper-body">
+            <p id="imageCropHint">拖动图片调整显示区域</p>
+            <div class="role-crop-stage is-avatar" id="roleCropStage">
+              <img id="roleCropImage" src="" alt="待框选图片" draggable="false">
+              <span class="role-crop-guide" aria-hidden="true"></span>
+            </div>
+            <label class="role-crop-zoom">缩放<input id="roleCropZoom" type="range" min="1" max="3" step="0.01" value="1"></label>
+            <div class="role-crop-actions">
+              <button id="cancelImageCrop" type="button">取消</button>
+              <button id="confirmImageCrop" type="button">确认</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- 聊天储存 / 设置总览页（••• 打开） -->
+      <section class="chat-store-page" id="chatStorePage" aria-label="设置面板" aria-hidden="true">
+        <div class="store-background" id="storeBackground"></div>
+        <header class="store-header">
+          <button id="closeChatStore" type="button" aria-label="返回">‹</button>
+          <h1 id="storeRoleName">相柳</h1>
+        </header>
+        <div class="store-content">
+
+          <!-- 角色信息区 -->
+          <p id="storeRoleIntro">《长相思第二季》电视剧角色相柳，海底九头妖王，冷酷狠毒，忠诚守承诺，内心渴望关爱与自由，为救小天付出一切，最终英勇战死。</p>
+
+          <div class="persona-mode-box">
+            <div class="persona-mode-title">启用单人版本 / 多人版本</div>
+
+            <div class="active-persona-card" id="activePersonaCard">
+              <div class="active-persona-row">
+                <span>当前人设</span>
+                <button type="button" id="activePersonaButton"></button>
+                <span class="mode-dot" id="singleModeDot" title="单人模式生效中"></span>
+                <span class="active-persona-caret" id="activePersonaCaret">⌄</span>
+              </div>
+              <div class="active-persona-expand" id="activePersonaExpand" hidden>
+                <button type="button" id="editActivePersonaExpandButton">编辑人设</button>
+                <button type="button" id="swapActivePersonaExpandButton">切换人设</button>
+              </div>
+            </div>
+
+            <button type="button" class="glass-row persona-poll-row" id="multiPersonaPollingButton">
+              <span>多轮询</span>
+              <span class="mode-dot" id="pollingModeDot" title="多轮询生效中"></span>
+            </button>
+
+            <div class="polling-expand" id="pollingExpand" hidden>
+              <div class="polling-mode-picker" id="pollingModePicker">
+                <button type="button" class="polling-mode-card" data-polling-mode="fixed">多-人设版本固定模型<br>轮询</button>
+                <button type="button" class="polling-mode-card" data-polling-mode="random">多-人设版本＋模型＋预设<br>轮询</button>
+              </div>
+              <div class="polling-panel" id="fixedPollingPanel">
+                <div class="polling-column-head"><span>人设版本</span><span>API链接＋模型</span><span>次数</span></div>
+                <div class="polling-list" id="pollingList"></div>
+                <p class="polling-hint">点击人设框选中，绿色边框表示参与轮询；每个人设单独选择 API，连续回答次数为 1～5。</p>
+              </div>
+              <div class="polling-panel" id="randomPollingPanel" hidden>
+                <div class="polling-random-group">
+                  <b>人设版本</b>
+                  <div class="polling-choice-list" id="randomPersonaList"></div>
+                </div>
+                <div class="polling-random-group">
+                  <b>API链接＋模型</b>
+                  <div class="polling-choice-list" id="randomApiList"></div>
+                </div>
+                <div class="polling-random-group">
+                  <b>预设</b>
+                  <div class="polling-choice-list" id="randomPresetList"></div>
+                </div>
+                <p class="polling-hint">每次回复分别随机抽取一个人设、一个 API 模型和一个预设；重刷也会重新抽取。</p>
+              </div>
+              <div class="polling-status" id="pollingStatus">尚未生效</div>
+            </div>
+          </div>
+
+          <button type="button" class="glass-row" id="storeApiButton">API链接<small id="storeApiName"></small></button>
+
+          <div class="glass-card">
+            <button type="button" id="fontSettingButton">字号颜色设置</button>
+            <button type="button" id="uploadRecordsButton">上传对话记录</button>
+            <input class="file-input" id="recordsFileInput" type="file" multiple>
+          </div>
+
+          <button type="button" class="glass-row" id="reshapeRoleButton">重塑角色</button>
+
+          <!-- 角色历史 -->
+          <section class="history-section">
+            <div class="history-title"><span>角色历史</span><span class="history-title-memory" aria-hidden="true">长记忆</span><span class="history-title-save-all" aria-hidden="true">保存所有选项</span></div>
+            <div class="history-list" id="historyList"></div>
+          </section>
+
+          <!-- ========== 以下为原右栏内容（融合进此页）========== -->
+
+          <!-- 分隔线 -->
+          <div class="store-divider"></div>
+
+          <!-- 用户身份 -->
+          <section class="sp-user-identity" id="userIdentityRow">
+            <div class="sp-identity-avatar-wrap">
+              <img class="sp-identity-avatar" id="userIdentityAvatar" src="" alt="" style="display:none">
+              <span class="sp-identity-avatar-placeholder" id="avatarPlaceholder">+</span>
+              <input class="file-input" id="userAvatarInput" type="file" accept="image/*">
+            </div>
+            <div class="identity-info">
+              <strong id="userIdentityName">用户</strong>
+              <small id="userIdentityDesc">点击上传头像 / 编辑身份</small>
+            </div>
+          </section>
+
+          <!-- 群聊设置（默认折叠） -->
+          <section class="sp-panel-section is-collapsed" id="groupChatPanel">
+            <button class="sp-toggle" type="button" aria-expanded="false">
+              <strong>群聊设置</strong><span class="toggle-icon">▸</span>
+            </button>
+            <div class="sp-body">
+              <p class="sp-hint">群聊管理、成员权限等配置。</p>
+            </div>
+          </section>
+
+          <!-- 高级选项（默认展开，去掉 API/模型） -->
+          <section class="sp-panel-section" id="advancedPanel">
+            <button class="sp-toggle is-open" type="button" aria-expanded="true">
+              <strong>高级选项</strong><span class="toggle-icon">▾</span>
+            </button>
+            <div class="sp-body sp-adv-grid">
+              <button class="sp-adv-item" data-detail="预设"><span class="sp-adv-name">预设</span><small data-advanced-summary="preset">读取中…</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+              <button class="sp-adv-item" data-detail="世界书"><span class="sp-adv-name">世界书</span><small data-advanced-summary="worldbook">读取中…</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+              <button class="sp-adv-item" data-detail="正则"><span class="sp-adv-name">正则替换</span><small data-advanced-summary="regex">读取中…</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+              <button class="sp-adv-item" data-detail="记忆管理"><span class="sp-adv-name">记忆 / RAG</span><small data-advanced-summary="memory">读取中…</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+              <button class="sp-adv-item" data-detail="语音API设置"><span class="sp-adv-name">语音生图</span><small data-advanced-summary="voice">读取中…</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+              <button class="sp-adv-item" data-detail="更多"><span class="sp-adv-name">更多设置</span><small data-advanced-summary="more">外观、备份与通用设置</small><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+            </div>
+          </section>
+
+        </div>
+      </section>
+
+      <!-- 置换人设面板（覆盖在 chatStorePage 之上） -->
+      <section class="persona-swap-page" id="personaSwapPage" aria-label="置换人设" aria-hidden="true">
+        <header class="swap-header app-function-header">
+          <button id="closePersonaSwap" type="button" aria-label="返回">‹</button>
+          <span>切换人设</span>
+        </header>
+        <div class="swap-content" id="personaSwapList"></div>
+      </section>
+
+      <!-- 上下文日志全屏界面 -->
+      <section class="context-log-page" id="contextLogPage" aria-label="上下文日志" aria-hidden="true">
+        <header class="swap-header app-function-header">
+          <button id="closeContextLogFull" type="button" aria-label="返回">‹</button>
+          <span id="contextLogPageTitle">上下文聊天日志</span>
+        </header>
+        <div id="contextLogFullContent" class="context-log-full"></div>
+      </section>
+
+      <!-- 聊天操作菜单 -->
+      <div class="chat-action-menu" id="chatActionMenu" aria-hidden="true">
+        <button type="button" id="exportChatButton">导出聊天</button>
+        <button type="button" id="copyChatButton">复制聊天</button>
+        <button type="button" id="renameChatButton">重命名聊天</button>
+        <button type="button" id="deleteChatButton">删除聊天</button>
+        <button type="button" id="openChatContextLogsButton">上下文聊天日志</button>
+      </div>
+
+      <div class="context-log-action-menu" id="contextLogActionMenu" aria-hidden="true">
+        <button type="button" id="exportContextLogButton">导出这一条</button>
+        <button type="button" id="deleteContextLogButton">删除这一条</button>
+      </div>
+
+      <!-- 重命名对话框 -->
+      <div class="rename-dialog" id="renameDialog" aria-hidden="true">
+        <div class="rename-card">
+          <strong id="renameDialogTitle">重命名聊天</strong>
+          <input id="renameChatInput" type="text" autocomplete="off">
+          <div class="rename-actions">
+            <button type="button" id="cancelRenameButton">取消</button>
+            <button type="button" id="confirmRenameButton">确定</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 删除聊天二次确认 -->
+      <div class="role-manager-dialog" id="deleteChatDialog" aria-hidden="true">
+        <button class="role-dialog-backdrop" id="cancelDeleteChatBackdrop" type="button" aria-label="取消删除聊天"></button>
+        <section class="role-dialog-card" role="dialog" aria-modal="true" aria-labelledby="deleteChatTitle">
+          <strong id="deleteChatTitle">删除聊天</strong>
+          <p class="delete-chat-target">删除：<b id="deleteChatTargetName"></b></p>
+          <label>
+            <input id="deleteChatNameInput" type="text" placeholder="填写此聊天框名" autocomplete="off" spellcheck="false">
+          </label>
+          <small>名称必须与要删除的聊天框完全一致；聊天记录及对应长记忆会一并删除。</small>
+          <div class="role-dialog-actions">
+            <button type="button" id="cancelDeleteChatButton">取消</button>
+            <button class="danger" type="button" id="confirmDeleteChatButton" disabled>确认</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 人设操作菜单 -->
+      <div class="persona-action-menu" id="personaActionMenu" aria-hidden="true">
+        <button type="button" id="renamePersonaButton">改名</button>
+        <button type="button" id="copyPersonaButton">复制</button>
+        <button type="button" id="deletePersonaButton">删除</button>
+      </div>
+
+      <!-- 人设新增菜单（点击 + 弹出） -->
+      <div class="persona-action-menu" id="personaMenu" aria-hidden="true">
+        <button type="button" id="menuAddEmptyPersona">新增空人设</button>
+        <button type="button" id="menuCopyPersona">复制人设</button>
+        <button type="button" id="menuImportPersona">导入人设</button>
+        <button type="button" id="menuImportMultiPersona">导入多人设</button>
+        <button type="button" id="menuExportPersona">导出人设</button>
+        <button type="button" id="menuExportMultiPersona">导出多人设</button>
+        <button type="button" id="menuRecallDefaultPersonas">调出默认多人设</button>
+      </div>
+
+      <!-- 退出编辑器确认菜单 -->
+      <div class="persona-action-menu editor-exit-menu" id="editorExitMenu" aria-hidden="true">
+        <button type="button" id="exitSaveButton">保存修改</button>
+        <button type="button" id="exitDiscardButton">不保存，退出</button>
+      </div>
+
+      <!-- 人物管理：角色页大 + 号打开 -->
+      <div class="role-manager-overlay" id="roleManagerOverlay" aria-hidden="true">
+        <button class="role-manager-backdrop" id="closeRoleManager" type="button" aria-label="关闭人物管理"></button>
+        <section class="role-manager-card" role="dialog" aria-modal="true" aria-labelledby="roleManagerTitle">
+          <div class="role-manager-heading">
+            <strong id="roleManagerTitle">人物管理</strong>
+            <small id="roleManagerTarget"></small>
+          </div>
+          <button type="button" id="addBlankRoleButton">新增人物</button>
+          <button type="button" id="copyCurrentRoleButton">复制人物</button>
+          <button type="button" id="editCurrentRoleIntroButton">编辑介绍</button>
+          <button class="role-manager-backup" type="button" id="exportRoleManagerBackupButton">导出备份</button>
+          <button class="role-manager-backup" type="button" id="importRoleManagerBackupButton">导入备份</button>
+          <button class="role-manager-delete" type="button" id="deleteCurrentRoleButton">删除人物</button>
+          <div class="role-shell-preview" aria-label="更改查看界面">
+            <div class="role-shell-preview-heading">
+              <strong>更改</strong>
+              <small>查看界面</small>
+            </div>
+            <div class="role-shell-preview-actions">
+              <button type="button" data-shell-preview="pc-narrow">PC窄</button>
+              <button type="button" data-shell-preview="pc-wide">PC宽</button>
+              <button type="button" data-shell-preview="android">安卓</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- 复制人物二次确认 -->
+      <div class="role-manager-dialog" id="copyRoleDialog" aria-hidden="true">
+        <button class="role-dialog-backdrop" id="cancelCopyRoleBackdrop" type="button" aria-label="取消复制人物"></button>
+        <section class="role-dialog-card" role="dialog" aria-modal="true" aria-labelledby="copyRoleTitle">
+          <strong id="copyRoleTitle">复制人物</strong>
+          <p class="copy-role-warning">
+            角色人物已重复，复制所有人物版本、聊天资料大约
+            <span class="copy-size-value" id="copyRoleSize">0.00 MB</span>
+          </p>
+          <div class="role-dialog-actions">
+            <button type="button" id="cancelCopyRoleButton">取消</button>
+            <button class="primary" type="button" id="confirmCopyRoleButton">确认复制</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 删除人物二次确认 -->
+      <div class="role-manager-dialog" id="deleteRoleDialog" aria-hidden="true">
+        <button class="role-dialog-backdrop" id="cancelDeleteRoleBackdrop" type="button" aria-label="取消删除人物"></button>
+        <section class="role-dialog-card" role="dialog" aria-modal="true" aria-labelledby="deleteRoleTitle">
+          <strong id="deleteRoleTitle">删除人物</strong>
+          <p id="deleteRoleWarning"></p>
+          <label>我自愿删除
+            <input id="deleteRoleNameInput" type="text" placeholder="填写人物姓名" autocomplete="off" spellcheck="false">
+          </label>
+          <small>姓名必须与要删除的人物完全一致。</small>
+          <div class="role-dialog-actions">
+            <button type="button" id="cancelDeleteRoleButton">取消</button>
+            <button class="danger" type="button" id="confirmDeleteRoleButton">确认删除</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 快速编辑当前人物介绍 -->
+      <div class="role-manager-dialog" id="editRoleIntroDialog" aria-hidden="true">
+        <button class="role-dialog-backdrop" id="cancelEditRoleIntroBackdrop" type="button" aria-label="取消编辑介绍"></button>
+        <section class="role-dialog-card" role="dialog" aria-modal="true" aria-labelledby="editRoleIntroTitle">
+          <strong id="editRoleIntroTitle">编辑人物介绍</strong>
+          <p id="editRoleIntroTarget"></p>
+          <label>角色介绍（用于右上角角色页展示）
+            <textarea id="quickRoleIntroInput" rows="7"></textarea>
+          </label>
+          <div class="role-dialog-actions">
+            <button type="button" id="cancelEditRoleIntroButton">取消</button>
+            <button class="primary" type="button" id="saveRoleIntroButton">保存</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- 设置页 -->
+      <section class="settings-page" id="settingsPage" aria-label="更多" aria-hidden="true">
+        <header class="settings-header app-function-header">
+          <button id="closeSettings" type="button" aria-label="返回">‹</button>
+          <strong class="settings-title-lockup"><span id="settingsTitle">更多</span><button id="appVersionButton" class="app-version-button" type="button" aria-label="检查相思新版本">v1.0.0 · by lynn</button><span id="appUpdateNotice" class="app-update-notice" aria-live="polite" hidden>✦更新✦</span></strong>
+        </header>
+        <div class="settings-list" id="settingsList"></div>
+      </section>
+
+      <!-- 设置详情页 -->
+      <section class="detail-page" id="detailPage" aria-label="设置详情" aria-hidden="true">
+        <header class="settings-header app-function-header">
+          <button id="closeDetail" type="button" aria-label="返回">‹</button>
+          <strong id="detailTitle">设置</strong>
+          <!-- 顶栏右侧按钮容器：openDetail 第三个参数支持 {label,onClick} 单按钮
+               或 [{label,onClick}, ...] 多按钮数组，渲染为多个 .detail-header-action -->
+          <div id="detailHeaderActions" class="detail-header-actions"></div>
+        </header>
+        <div class="detail-body" id="detailBody"></div>
+      </section>
+    </section>
+
+  </main>
+  <script src="./factory-default-config.js?v=100"></script>
+  <script src="./app-memory.js?v=100"></script>
+  <script src="./app.js?v=100"></script>
+</body>
+</html>
